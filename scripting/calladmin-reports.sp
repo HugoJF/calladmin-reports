@@ -6,19 +6,8 @@
 #define PLUGIN_VERSION "1.0"
 #define MAX_JSON_STRING_SIZE 4096
 #define DEMO_UPLOAD_DELAY 5.0
-
-/*
-    - Atualizar o Calladmin para gerar os links pra enviar a demo;
-    - Evitar usar CreateTimer(CreateTimer()), criar os dois ao mesmo tempo
-    - Usar template de criacao de Report
-    - Verificar todos os possiveis erros do SteamWorks
-    - padronizar cvars
-    - adicionar mensagens para todos do servidor quando a demo esta sendo gravada
-    - evitar pegar request quando ele passa do tamnaho do buffer
-    - bibliotecas pra JSON?
-    - md5 pelo header? https://forums.alliedmods.net/showthread.php?t=145883
-    - validar .dem ?
-*/
+#define RECORDING_ALERT_MESSAGE "Uma demo está sendo gravada por causa de um report, o servidor travará brevemente devido a uma limitação da Source Engine e não pode ser evitado! Utilize os reports apenas quando necessário :)"
+#define RECORDED_ALERT_MESSAGE "Gravação da demo finalizada!"
 
 char g_sHostPort[6];
 char g_sServerName[256];
@@ -29,6 +18,7 @@ ConVar g_cRecordDuration;
 ConVar g_cDemoPath;
 
 bool g_bIsTVRecording = false;
+int g_iStartedRecordingAt = -1;
 
 char g_sCurrentReportId[64];
 char g_sCurrentDemoPath[PLATFORM_MAX_PATH];
@@ -48,11 +38,12 @@ public void OnPluginStart()
 {
     CreateConVar("calladmin_reports", PLUGIN_VERSION, "CallAdmin Middleware version", FCVAR_DONTRECORD|FCVAR_SPONLY|FCVAR_REPLICATED|FCVAR_NOTIFY);
     
-    g_cWebHook = CreateConVar("calladmin_reports_webhook", "http://calladmin-middleware.denerdtv.com", "URL to send report information");
-    g_cRecordDuration = CreateConVar("sm_rdr_recordtime", "15", "Time in seconds to stop recording automatically (0 = Disable [default])");
+    g_cWebHook = CreateConVar("sm_cr_webhook", "http://calladmin-middleware.denerdtv.com", "URL to send report information");
+    g_cRecordDuration = CreateConVar("sm_cr_recordtime", "15", "Time in seconds to stop recording automatically (0 = Disable [default])");
     g_cDemoPath = CreateConVar("sm_cr_demo_path", "demos", "Path to store recorded demos by CallAdmin (let . to upload demos to the cstrike/csgo folder)");
 
     RegServerCmd("sm_cr_test", Command_Test, "Fakes a report");
+    RegServerCmd("sm_cr_alert_test", Command_AlertTest, "Tests CenterText alerts");
 
     AutoExecConfig(true, "calladmin_reports");
 }
@@ -101,6 +92,13 @@ public void CallAdmin_OnServerDataChanged(ConVar convar, ServerData type, const 
     }
 }
 
+public Action Command_AlertTest(int args)
+{
+    CreateTimer(1.0, Timer_CsayRecording, _, TIMER_REPEAT);
+
+    return Plugin_Handled;
+}
+
 public Action Command_Test(int args)
 {
     JSON_Object hBody = new JSON_Object();
@@ -127,6 +125,8 @@ public void CallAdmin_OnReportPost(int client, int target, const char[] reason)
 {
     // TODO: check player count to avoid weird shit
     PrintToServer("CallAdmin_OnReportPost() triggered");
+
+    CreateTimer(1.0, Timer_CsayRecording, _, TIMER_REPEAT);
 
     JSON_Object hBody = new JSON_Object();
 
@@ -168,6 +168,27 @@ public void CallAdmin_OnReportPost(int client, int target, const char[] reason)
     hBody.SetString("server_port", g_sHostPort);
 
     GenerateReport(hBody);
+}
+
+public Action Timer_CsayRecording(Handle timer)
+{
+    int iNow = GetTime();
+
+    if (g_iStartedRecordingAt < 0) {
+        g_iStartedRecordingAt = iNow;
+    }
+
+    int iDelta = iNow - g_iStartedRecordingAt;
+
+    if (iDelta > 30) {
+        g_iStartedRecordingAt = -1;
+
+        return Plugin_Stop;
+    }
+
+    PrintCenterTextAll(RECORDING_ALERT_MESSAGE);
+
+    return Plugin_Continue;
 }
 
 void GenerateReport(JSON_Object hBody)
@@ -304,9 +325,11 @@ void StopRecordDemo()
     }
 }
 
-
 public Action Timer_UploadDemo(Handle timer)
 {
+    g_iStartedRecordingAt = 0; // negative will make the Timer reset to GetTime()
+    PrintCenterTextAll(RECORDED_ALERT_MESSAGE);
+
     UploadDemo(g_sCurrentDemoPath);
 }
 
@@ -338,7 +361,7 @@ void UploadCallback(Handle hRequest, bool bFailure, bool bRequestSuccessful, EHT
 
     if (eStatusCode != k_EHTTPStatusCode200OK && eStatusCode != k_EHTTPStatusCode201Created) {
         LogError("[UploadCallback()] Request returned status code: %d", eStatusCode);
-
+ 
         return;
     }
 
