@@ -64,7 +64,6 @@ public void OnAllPluginsLoaded()
 public void CallAdmin_OnRequestTrackersCountRefresh(int &trackers)
 {
     trackers++;
-    PrintToServer("Base plugin requested a tracker count from us");
 }
 
 void UpdateAddress()
