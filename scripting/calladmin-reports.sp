@@ -2,6 +2,7 @@
 #include <calladmin>
 #include <SteamWorks>
 #include <json>
+#include <csgocolors>
 
 #define PLUGIN_VERSION "1.0"
 #define MAX_JSON_STRING_SIZE 4096
@@ -255,6 +256,11 @@ void ReportCreationRequestCallback(Handle hRequest, bool bFailure, bool bRequest
 
     IntToString(iId, g_sCurrentReportId, sizeof(g_sCurrentReportId));
     hResponse.GetString("demo_url", g_sDemoPostUrl, sizeof(g_sDemoPostUrl));
+
+    char sReportViewUrl[256];
+    hResponse.GetString("view_url", sReportViewUrl, sizeof(sReportViewUrl));
+
+    CPrintToChatAll("{default}[{darkred}REPORTS{default}] O report será disponibilizado em: {green}%s", sReportViewUrl);
 
     PrintToServer("INFO: Report generated with ID %s and demo URL: %s", g_sCurrentReportId, g_sDemoPostUrl);
     LogMessage("INFO: Report generated with ID %s and demo URL: %s", g_sCurrentReportId, g_sDemoPostUrl);
